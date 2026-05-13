@@ -36,18 +36,6 @@ Plus a `SHA256SUMS` file.
 Tarballs are flat (no top-level dir) so a Bazel `http_archive` can
 apply a `build_file` with no `strip_prefix`.
 
-## Why a docker build, not Bazel / Nix
-
-Flutter engine is built with `gclient` + `gn` + `ninja`. There is no
-realistic path to driving that hermetically from Bazel or Nix — gclient
-pulls Dart SDK, Skia, libc++, sysroots, and ~25GB of other deps from
-chromium's CIPD and various git mirrors. We isolate all of that inside
-an Ubuntu 22.04 container.
-
-The build itself is **not hermetic**: it pulls from the public
-internet (chromium.googlesource.com, github, Dart's CIPD endpoints).
-The engine SHA pins `DEPS`, which pins everything except `depot_tools`.
-
 ## Disk + time requirements
 
 - ~30–40 GB scratch space (gclient checkout + ninja outputs).
@@ -88,26 +76,34 @@ rebuild).
 
 ### Publish a release
 
-After the build finishes, three tarballs and a `SHA256SUMS` file are
-in `${SCRATCH_DIR}/artifacts/`. Push them to a GitHub release tagged
-`engine_<sha>` (matching ardera's tag convention so the download URL
-is deterministic).
+The build is heavyweight (~40GB scratch, hours of CPU) and naturally
+lives on a beefy box; `gh` is usually authenticated on a workstation.
+So the workflow is two-machine: **build remotely, publish locally**.
 
-Fish syntax (for bash, swap `set X Y` for `X=Y`):
+`publish.sh` does this end-to-end:
+1. `rsync` the artifacts from the build host into a `mktemp -d` under
+   `/tmp` on this machine,
+2. re-verify `SHA256SUMS` post-transfer,
+3. `gh release create engine_<sha> --repo dunv/flutter_engines` and
+   upload all tarballs + `SHA256SUMS`,
+4. delete the staging dir.
 
-```fish
-set sha 425cfb54d01a9472b3e81d9e76fd63a4a44cfbcb
-set artifacts ~/.cache/flutter_engine_build/$sha/artifacts
+```sh
+./publish.sh <ENGINE_SHA> <BUILD_HOST>
 
-gh release create engine_$sha \
-    --repo dunv/flutter_engines \
-    --title "Flutter engine $sha" \
-    --notes-file $artifacts/SHA256SUMS \
-    $artifacts/flutter_engine_*.tar.gz \
-    $artifacts/SHA256SUMS
+# Examples:
+./publish.sh 425cfb54d01a9472b3e81d9e76fd63a4a44cfbcb builder.lan
+./publish.sh 425cfb54d01a9472b3e81d9e76fd63a4a44cfbcb daniel@10.0.0.5
+
+# If the build host used a non-default SCRATCH_DIR:
+REMOTE_ARTIFACTS=/scratch/flutter_engines/<sha>/artifacts/ \
+    ./publish.sh <sha> builder.lan
+
+# Default repo is dunv/flutter_engines; override with REPO=...
 ```
 
-Resulting download URLs:
+Tag convention is `engine_<sha>`, matching ardera's
+`flutter-engine-binaries-for-arm`. Resulting download URLs:
 
 ```
 https://github.com/dunv/flutter_engines/releases/download/engine_<sha>/flutter_engine_linux_<arch>_<mode>-<sha>.tar.gz
@@ -122,7 +118,7 @@ https://github.com/dunv/flutter_engines/releases/download/engine_<sha>/flutter_e
 2. `./build_engine.sh <new_sha>` — a fresh scratch dir will be
    created, gclient will re-fetch deps for the new SHA, and the three
    tarballs will land in `~/.cache/flutter_engine_build/<new_sha>/artifacts/`.
-3. Publish via `gh release create engine_<new_sha> ...` (see above).
+3. Publish via `./publish.sh <new_sha> <build-host>` (see above).
 4. Update the consuming project's `MODULE.bazel` `http_archive(urls = ..., sha256 = ...)` entries.
 
 ## Layout
@@ -131,7 +127,8 @@ https://github.com/dunv/flutter_engines/releases/download/engine_<sha>/flutter_e
 .
 ├── Dockerfile         # ubuntu 22.04 + depot_tools + non-root build user
 ├── build.sh           # in-container driver: gclient sync → gn → ninja → tar
-├── build_engine.sh    # host wrapper: docker build + docker run
+├── build_engine.sh    # host wrapper for the build host: docker build + docker run
+├── publish.sh         # workstation wrapper: rsync artifacts from build host → gh release
 ├── LICENSE            # MIT, covers this repo's scripts only
 └── README.md
 ```
@@ -170,7 +167,8 @@ uses `engine/scripts/standard.gclient` from the new monorepo layout.
 ## License & disclaimers
 
 The scripts in this repo (`Dockerfile`, `build.sh`, `build_engine.sh`,
-`README.md`) are licensed under the **MIT License** — see [`LICENSE`](LICENSE).
+`publish.sh`, `README.md`) are licensed under the **MIT License** —
+see [`LICENSE`](LICENSE).
 
 The **Flutter engine binaries** published to this repo's GitHub
 Releases are derivative works of upstream [Flutter](https://github.com/flutter/flutter)
