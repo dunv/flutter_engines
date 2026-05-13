@@ -55,6 +55,9 @@ SHA is `425cfb54d01a9472b3e81d9e76fd63a4a44cfbcb`.
 
 ### Build
 
+From a clone of this repo on the build host (needs docker + scratch
+space + CPU):
+
 ```sh
 # All three variants:
 ./build_engine.sh 425cfb54d01a9472b3e81d9e76fd63a4a44cfbcb
@@ -125,13 +128,19 @@ https://github.com/dunv/flutter_engines/releases/download/engine_<sha>/flutter_e
 
 ```
 .
-├── Dockerfile         # ubuntu 22.04 + depot_tools + non-root build user
-├── build.sh           # in-container driver: gclient sync → gn → ninja → tar
-├── build_engine.sh    # host wrapper for the build host: docker build + docker run
-├── publish.sh         # workstation wrapper: rsync artifacts from build host → gh release
-├── LICENSE            # MIT, covers this repo's scripts only
+├── docker/                   # what runs INSIDE the container
+│   ├── Dockerfile            # ubuntu 22.04 + depot_tools + non-root user
+│   └── build.sh              # in-container driver: gclient → gn → ninja → tar
+├── build_engine.sh           # runs on the BUILD HOST: docker build + docker run
+├── publish.sh                # runs on the WORKSTATION: rsync + gh release
+├── LICENSE                   # MIT, covers this repo's scripts only
 └── README.md
 ```
+
+The two top-level scripts are the entry points; `docker/` holds only
+the image content. `build_engine.sh` needs docker + ~40GB scratch +
+hours of CPU; `publish.sh` needs only `ssh`/`rsync` access to the
+build host and a `gh` login.
 
 ## Known gotchas
 
@@ -166,9 +175,9 @@ uses `engine/scripts/standard.gclient` from the new monorepo layout.
 
 ## License & disclaimers
 
-The scripts in this repo (`Dockerfile`, `build.sh`, `build_engine.sh`,
-`publish.sh`, `README.md`) are licensed under the **MIT License** —
-see [`LICENSE`](LICENSE).
+The scripts in this repo (`docker/Dockerfile`, `docker/build.sh`,
+`build_engine.sh`, `publish.sh`, `README.md`) are licensed under the
+**MIT License** — see [`LICENSE`](LICENSE).
 
 The **Flutter engine binaries** published to this repo's GitHub
 Releases are derivative works of upstream [Flutter](https://github.com/flutter/flutter)

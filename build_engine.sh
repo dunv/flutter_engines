@@ -23,7 +23,10 @@
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# This wrapper runs on the build host; the Dockerfile + in-container
+# build.sh sit in the docker/ subdir. Resolve docker/ relative to this
+# script's location so the wrapper works regardless of CWD.
+DOCKER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/docker" && pwd)"
 
 # SHA can come from arg 1 or the ENGINE_SHA env var. The arg wins so
 # `ENGINE_SHA=<old> ./build_engine.sh <new>` always builds <new>.
@@ -52,7 +55,7 @@ docker build \
     --build-arg "BUILDER_UID=$(id -u)" \
     --build-arg "BUILDER_GID=$(id -g)" \
     -t "${IMAGE_TAG}" \
-    "${REPO_ROOT}"
+    "${DOCKER_DIR}"
 
 echo
 echo "=== Running build"
