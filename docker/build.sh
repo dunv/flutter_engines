@@ -222,11 +222,41 @@ build_arm64_release() {
     rm -rf "${stage}"
 }
 
+# Official GTK desktop embedder (flutter_linux) for arm64. Unlike the bare
+# embedder (libflutter_engine.so, consumed by flutter-pi), this is the
+# libflutter_linux_gtk.so used by a compiled GTK runner — the path the arm64
+# carts move to (Wayland client on sway). Reuses the same linux_release_arm64
+# gn config as build_arm64_release (gn gen is idempotent), so if both run the
+# out tree is shared. Ships the public flutter_linux headers so the downstream
+# cmake runner can compile against them.
+build_arm64_gtk_release() {
+    local tarball="flutter_engine_linux_arm64_gtk_release-${ENGINE_SHA}.tar.gz"
+    already_built "${tarball}" && return 0
+    run_gn linux_release_arm64 \
+        "${COMMON_GN_FLAGS[@]}" --runtime-mode=release --linux --linux-cpu=arm64 \
+        --embedder-for-target
+    run_ninja linux_release_arm64 \
+        flutter/shell/platform/linux:flutter_linux_gtk
+    local stage
+    stage="$(mktemp -d)"
+    cp "${SRC_DIR}/out/linux_release_arm64/libflutter_linux_gtk.so" "${stage}/"
+    cp "${SRC_DIR}/out/linux_release_arm64/icudtl.dat"              "${stage}/"
+    # Public GTK embedder headers (umbrella flutter_linux.h + fl_*.h).
+    mkdir -p "${stage}/flutter_linux"
+    cp "${FLUTTER_DIR}"/shell/platform/linux/public/flutter_linux/*.h \
+       "${stage}/flutter_linux/"
+    package "${tarball}" \
+            "${stage}" \
+            libflutter_linux_gtk.so icudtl.dat flutter_linux
+    rm -rf "${stage}"
+}
+
 for v in ${VARIANTS}; do
     case "$v" in
-        x64_release)   build_x64_release   ;;
-        x64_debug)     build_x64_debug     ;;
-        arm64_release) build_arm64_release ;;
+        x64_release)      build_x64_release      ;;
+        x64_debug)        build_x64_debug        ;;
+        arm64_release)    build_arm64_release    ;;
+        arm64_gtk_release) build_arm64_gtk_release ;;
         *) fail "unknown variant: $v" ;;
     esac
 done

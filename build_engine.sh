@@ -61,7 +61,7 @@ echo
 echo "=== Running build"
 # --network=host so gclient sync can hit chromium.googlesource.com,
 # github, dart's CIPD, etc. without docker DNS quirks.
-docker run --rm -it \
+docker run --rm \
     --network=host \
     -e "ENGINE_SHA=${ENGINE_SHA}" \
     -e "VARIANTS=${VARIANTS}" \
